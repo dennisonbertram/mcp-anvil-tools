@@ -18,6 +18,7 @@ Perfect for AI-powered smart contract auditing, testing workflows, and blockchai
 - **Dual Transport Modes**: HTTP/SSE for web clients or stdio for CLI/desktop integration
 - **Reading Tools**: Source code, storage, bytecode, and event log access
 - **Execution Tools**: Transaction simulation, sending, and state manipulation
+- **Tracing Tools**: Transaction and call tracing with multiple tracer types
 - **Anvil Integration**: Automatic Anvil process management with snapshot/revert support
 - **State Persistence**: SQLite-backed deployment and session tracking
 - **Type Safety**: Full TypeScript support with Zod validation
@@ -354,6 +355,75 @@ Revert blockchain state to a previous snapshot.
 }
 ```
 
+### Tracing Tools
+
+#### 10. `trace_transaction`
+Trace an existing transaction by hash using debug_traceTransaction.
+
+**Input:**
+- `txHash` (string): Transaction hash to trace (64 hex characters)
+- `tracer` (optional): Tracer type - `callTracer`, `prestateTracer`, `4byteTracer`, or omit for raw opcode trace
+- `tracerConfig` (optional): Tracer-specific configuration object
+  - For `callTracer`: `{ onlyTopCall: true }` to exclude subcalls
+- `rpc` (optional): RPC URL (default: `http://localhost:8545`)
+
+**Output:**
+- `result`: Trace result (format depends on tracer type)
+  - **callTracer**: Call tree with `type`, `from`, `to`, `value`, `gas`, `input`, `output`
+  - **prestateTracer**: Pre-execution state of all touched accounts
+  - **4byteTracer**: Map of function selectors to call counts
+  - **No tracer**: Full opcode trace with `structLogs` array
+- `txHash` (string): Transaction hash that was traced
+
+**Example:**
+```json
+{
+  "txHash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  "tracer": "callTracer",
+  "tracerConfig": {
+    "onlyTopCall": true
+  }
+}
+```
+
+**Use Cases:**
+- Debug failed transactions
+- Analyze gas usage patterns
+- Understand contract interactions
+- Detect reentrancy or complex call paths
+
+#### 11. `trace_call`
+Trace a call without sending transaction using debug_traceCall.
+
+**Input:**
+- `to` (string): Target contract address
+- `data` (string): Calldata (hex encoded)
+- `from` (optional): Sender address
+- `value` (optional): ETH value in wei (hex)
+- `blockTag` (optional): Block to trace at - `latest`, `earliest`, `pending`, `safe`, `finalized`, or block number
+- `tracer` (optional): Tracer type (same as `trace_transaction`)
+- `tracerConfig` (optional): Tracer configuration
+- `rpc` (optional): RPC URL
+
+**Output:**
+- `result`: Trace result (format depends on tracer type, same as `trace_transaction`)
+
+**Example:**
+```json
+{
+  "to": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+  "data": "0xa9059cbb000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb922660000000000000000000000000000000000000000000000000de0b6b3a7640000",
+  "from": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+  "tracer": "callTracer"
+}
+```
+
+**Use Cases:**
+- Debug before sending actual transactions
+- Analyze call behavior at specific blocks
+- Test state override scenarios
+- Investigate potential exploits safely
+
 ## Claude Desktop Integration
 
 Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
@@ -416,8 +486,9 @@ src/
 │   └── manager.ts        # SQLite state management
 ├── tools/
 │   ├── index.ts          # Tool registration
-│   ├── reading.ts        # Reading tools
-│   └── execution.ts      # Execution tools
+│   ├── reading.ts        # Reading tools (source, storage, bytecode, events)
+│   ├── execution.ts      # Execution tools (simulate, send, impersonate, snapshots)
+│   └── tracing.ts        # Tracing tools (debug_traceTransaction, debug_traceCall)
 └── utils/
     ├── errors.ts         # Error handling
     └── validation.ts     # Zod schemas
@@ -603,7 +674,7 @@ npm run format
 - [ ] Call graph visualization
 - [ ] AST parsing utilities
 - [ ] Multi-chain support
-- [ ] Enhanced trace analysis
+- [x] Enhanced trace analysis (debug_traceTransaction, debug_traceCall)
 - [ ] Gas optimization suggestions
 - [ ] Security pattern detection
 

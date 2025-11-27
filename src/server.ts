@@ -51,6 +51,9 @@ export async function createMcpServer(): Promise<McpServerContext> {
   // Create Express app
   const app = express();
 
+  // Store SSE transports by sessionId for message routing
+  const transports = new Map<string, SSEServerTransport>();
+
   // Middleware
   app.use(
     cors({
@@ -98,14 +101,53 @@ export async function createMcpServer(): Promise<McpServerContext> {
   app.get("/sse", async (_req: Request, res: Response) => {
     console.log("New SSE connection");
     const transport = new SSEServerTransport("/messages", res);
+    const sessionId = transport.sessionId;
+
+    // Store transport by sessionId for message routing
+    transports.set(sessionId, transport);
+    console.log(`SSE transport stored for session: ${sessionId}`);
+
+    // Clean up transport when connection closes
+    res.on("close", () => {
+      transports.delete(sessionId);
+      console.log(`SSE transport removed for session: ${sessionId}`);
+    });
+
     await mcpServer.connect(transport);
   });
 
-  // MCP message endpoint
-  app.post("/messages", async (_req: Request, res: Response) => {
-    // SSEServerTransport handles POST requests internally
-    // This endpoint should not be called directly
-    res.status(405).json({ error: "Method not allowed" });
+  // MCP message endpoint - routes messages to the correct SSE transport
+  app.post("/messages", async (req: Request, res: Response) => {
+    const sessionId = req.query.sessionId as string;
+
+    if (!sessionId) {
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: "Missing sessionId query parameter",
+        },
+        id: null,
+      });
+      return;
+    }
+
+    const transport = transports.get(sessionId);
+
+    if (!transport) {
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: "No transport found for sessionId",
+        },
+        id: null,
+      });
+      return;
+    }
+
+    // Route the message to the correct transport
+    await transport.handlePostMessage(req, res, req.body);
   });
 
   return {
