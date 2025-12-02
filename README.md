@@ -451,6 +451,26 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 
 ## Configuration
 
+### Alchemy Multi-Network Support
+
+Set `ALCHEMY_API_KEY` to enable access to any Alchemy-supported network without additional configuration:
+
+```bash
+ALCHEMY_API_KEY=your_alchemy_api_key
+```
+
+Use any [Alchemy network slug](https://docs.alchemy.com/reference/supported-chains) directly:
+
+| Network | Slug |
+|---------|------|
+| Ethereum | `eth-mainnet`, `eth-sepolia` |
+| Arbitrum | `arb-mainnet`, `arb-sepolia` |
+| Optimism | `opt-mainnet`, `opt-sepolia` |
+| Polygon | `polygon-mainnet`, `polygon-amoy` |
+| Base | `base-mainnet`, `base-sepolia` |
+
+New networks are supported automatically as Alchemy adds them - no code changes needed.
+
 ### Environment Variables
 
 | Variable | Description | Default |
@@ -461,8 +481,9 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 | `ANVIL_PORT_START` | Anvil port range start | `8545` |
 | `ANVIL_PORT_END` | Anvil port range end | `8555` |
 | `ANVIL_DEFAULT_CHAIN_ID` | Default chain ID | `31337` |
-| `MAINNET_RPC_URL` | Mainnet RPC endpoint | - |
-| `SEPOLIA_RPC_URL` | Sepolia RPC endpoint | - |
+| `ALCHEMY_API_KEY` | Alchemy API key (enables multi-network) | - |
+| `MAINNET_RPC_URL` | Mainnet RPC (overrides Alchemy) | - |
+| `SEPOLIA_RPC_URL` | Sepolia RPC (overrides Alchemy) | - |
 | `ETHERSCAN_API_KEY` | Etherscan API key | - |
 | `ARBISCAN_API_KEY` | Arbiscan API key | - |
 | `LOG_LEVEL` | Logging level | `info` |

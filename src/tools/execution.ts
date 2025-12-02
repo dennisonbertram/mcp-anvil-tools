@@ -44,6 +44,44 @@ async function checkIsAnvil(client: PublicClient): Promise<boolean> {
   }
 }
 
+/**
+ * Check if an error is a connection error (Anvil not running, network issue, etc.)
+ * and return a user-friendly error message
+ */
+function isConnectionError(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+
+  const errorMessage = error.message.toLowerCase();
+  const cause = (error as Error & { cause?: { code?: string } }).cause;
+
+  // Check for common connection error patterns
+  if (
+    cause?.code === 'ECONNREFUSED' ||
+    errorMessage.includes('econnrefused') ||
+    errorMessage.includes('fetch failed') ||
+    errorMessage.includes('connection refused')
+  ) {
+    return 'Cannot connect to RPC endpoint. Is Anvil running? Start it with: anvil';
+  }
+
+  if (
+    errorMessage.includes('timeout') ||
+    errorMessage.includes('timed out') ||
+    error.name === 'TimeoutError'
+  ) {
+    return 'RPC connection timed out. Check if Anvil is running and the RPC URL is correct.';
+  }
+
+  if (
+    errorMessage.includes('network') ||
+    errorMessage.includes('socket')
+  ) {
+    return 'Network error connecting to RPC. Verify Anvil is running on the expected port.';
+  }
+
+  return null;
+}
+
 // ============================================================================
 // Snapshot Registry (shared across create/revert)
 // ============================================================================
@@ -119,7 +157,7 @@ export const SimulateTxInputSchema = z.object({
 });
 
 export const SimulateTxOutputSchema = z.object({
-  result: z.string().describe("Return data (hex encoded)"),
+  result: z.string().optional().describe("Return data (hex encoded) - only present on success"),
   decoded: z.any().optional().describe("Decoded return value if ABI provided"),
   gasUsed: z.string().optional().describe("Gas consumed (hex) - only available with tracing"),
   logs: z.array(z.object({
@@ -128,9 +166,8 @@ export const SimulateTxOutputSchema = z.object({
     data: z.string().describe("Non-indexed event data")
   })).optional().describe("Event logs (only available with tracing)"),
   reverted: z.boolean().describe("Whether call reverted"),
-  revertReason: z.string().optional().describe("Decoded revert reason"),
-  revertData: z.string().optional().describe("Raw revert data (hex)"),
-  error: z.string().optional().describe("Error message if simulation failed")
+  revertReason: z.string().optional().describe("Decoded revert reason - concise message without stack traces"),
+  revertData: z.string().optional().describe("Raw revert data (hex)")
 });
 
 export type SimulateTxInput = z.infer<typeof SimulateTxInputSchema>;
@@ -141,7 +178,17 @@ export async function simulateTx(input: SimulateTxInput): Promise<SimulateTxOutp
 
   // Detect chain ID from RPC (DO NOT hardcode)
   const tempClient = createPublicClient({ transport: http(rpcUrl) });
-  const chainId = await tempClient.request({ method: 'eth_chainId' });
+  let chainId: string;
+  try {
+    chainId = await tempClient.request({ method: 'eth_chainId' });
+  } catch (error) {
+    // Check for connection errors and provide helpful message
+    const connectionError = isConnectionError(error);
+    if (connectionError) {
+      throw new Error(connectionError);
+    }
+    throw error;
+  }
 
   // Get or create cached client
   const client = getClient(rpcUrl, Number(chainId));
@@ -193,6 +240,12 @@ export async function simulateTx(input: SimulateTxInput): Promise<SimulateTxOutp
     };
 
   } catch (error: any) {
+    // Check for connection errors first
+    const connectionError = isConnectionError(error);
+    if (connectionError) {
+      throw new Error(connectionError);
+    }
+
     // Handle revert - decode revert data from error
     if (error.name === 'CallExecutionError' || error.name === 'ContractFunctionRevertedError') {
       let revertReason: string | undefined;
@@ -209,21 +262,21 @@ export async function simulateTx(input: SimulateTxInput): Promise<SimulateTxOutp
           revertReason = `${decoded.errorName}(${JSON.stringify(decoded.args)})`;
           revertData = data;
         } catch (e) {
-          // Decoding failed, use raw message
+          // Decoding failed, use short message (clean, no stack traces)
           revertReason = error.shortMessage || 'Execution reverted';
           revertData = data;
         }
       } else {
+        // Use shortMessage which is concise, not the full error.message with HTTP details
         revertReason = error.shortMessage || 'Execution reverted';
         revertData = data;
       }
 
+      // Clean response: no result field on revert, no redundant error field
       return {
-        result: '0x',
         reverted: true,
         revertReason,
         revertData,
-        error: error.message
       };
     }
 
