@@ -5,7 +5,8 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js --external:@modelcontextprotocol/sdk --external:better-sqlite3 --external:express --external:cors --external:viem --external:dotenv --external:winston --external:zod --format=esm",
+    "build:check": "tsc --noEmit",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "start:stdio": "node dist/index.js --stdio",
@@ -25,15 +26,14 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@modelcontextprotocol/sdk": "^1.24.2",
     "better-sqlite3": "^9.4.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "viem": "^2.21.54",
+    "viem": "^1.21.4",
     "winston": "^3.11.0",
-    "zod": "^3.22.4",
-    "zod-to-json-schema": "^3.25.0"
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.9",
@@ -43,6 +43,7 @@
     "@types/supertest": "^6.0.3",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
+    "esbuild": "^0.27.0",
     "eslint": "^8.56.0",
     "prettier": "^3.2.4",
     "supertest": "^7.1.4",

@@ -42,7 +42,7 @@ async function main() {
       process.on("SIGTERM", () => shutdown("SIGTERM"));
       process.on("SIGINT", () => shutdown("SIGINT"));
     } else {
-      // HTTP/SSE mode - for web usage
+      // HTTP mode - for web usage (using StreamableHTTPServerTransport)
       const config = loadConfig();
       console.log("Configuration loaded");
       console.log(`  Port: ${config.port}`);
@@ -60,7 +60,7 @@ async function main() {
       const server = app.listen(config.port, config.host, () => {
         console.log(`\nAudit MCP Server running:`);
         console.log(`  HTTP: http://${config.host}:${config.port}`);
-        console.log(`  SSE:  http://${config.host}:${config.port}/sse`);
+        console.log(`  MCP:  http://${config.host}:${config.port}/mcp`);
         console.log(`  Health: http://${config.host}:${config.port}/health`);
         console.log(`\nReady to accept connections.`);
       });

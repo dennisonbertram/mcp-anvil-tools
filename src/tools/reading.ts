@@ -9,6 +9,7 @@ import { z } from "zod";
 import { createPublicClient, http, getAddress, keccak256, parseAbiItem, decodeEventLog } from "viem";
 import fs from "fs/promises";
 import path from "path";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ToolError } from "../utils/errors.js";
 
 // ============================================================================
@@ -605,3 +606,138 @@ export const readingTools = {
     handler: readEvents
   }
 };
+
+// ============================================================================
+// McpServer Tool Registration
+// ============================================================================
+
+/**
+ * Register all reading tools with the McpServer
+ */
+export function registerReadingTools(server: McpServer) {
+  // read_source
+  server.registerTool(
+    "read_source",
+    {
+      title: "Read Source",
+      description: "Read Solidity source code files from the v4-core repository. Returns content, line count, size, and metadata.",
+      inputSchema: {
+        path: z.string().describe("Relative path from lib/v4-core/src/ (e.g., 'PoolManager.sol', 'libraries/Pool.sol')")
+      }
+    },
+    async ({ path: inputPath }) => {
+      try {
+        const result = await readSource({ path: inputPath });
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          structuredContent: result
+        };
+      } catch (error) {
+        if (error instanceof ToolError) {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({ error: error.message, code: error.code, details: error.details }) }],
+            isError: true
+          };
+        }
+        throw error;
+      }
+    }
+  );
+
+  // read_storage
+  server.registerTool(
+    "read_storage",
+    {
+      title: "Read Storage",
+      description: "Read persistent storage slots from deployed contracts. Provides raw value and best-effort decoded interpretation. Note: Only reads persistent storage, not transient storage (TLOAD/TSTORE).",
+      inputSchema: {
+        address: z.string().describe("Contract address"),
+        slot: z.string().describe("Storage slot as hex (e.g., '0x0', '0x1')"),
+        blockTag: z.union([z.literal("latest"), z.literal("earliest"), z.literal("pending"), z.number(), z.string()]).optional().describe("Block tag: 'latest', 'earliest', 'pending', block number, or block hash"),
+        rpc: z.string().url().optional().describe("RPC URL (defaults to http://localhost:8545)")
+      }
+    },
+    async (args) => {
+      try {
+        const result = await readStorage(args as ReadStorageInput);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          structuredContent: result
+        };
+      } catch (error) {
+        if (error instanceof ToolError) {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({ error: error.message, code: error.code, details: error.details }) }],
+            isError: true
+          };
+        }
+        throw error;
+      }
+    }
+  );
+
+  // read_bytecode
+  server.registerTool(
+    "read_bytecode",
+    {
+      title: "Read Bytecode",
+      description: "Retrieve deployed bytecode from a contract address. Returns bytecode, size, hash, and isEmpty flag.",
+      inputSchema: {
+        address: z.string().describe("Contract address (checksummed or lowercase)"),
+        blockTag: z.union([z.literal("latest"), z.literal("earliest"), z.literal("pending"), z.number(), z.string()]).optional().describe("Block tag: 'latest', 'earliest', 'pending', block number, or block hash"),
+        rpc: z.string().url().optional().describe("RPC URL (defaults to http://localhost:8545)")
+      }
+    },
+    async (args) => {
+      try {
+        const result = await readBytecode(args as ReadBytecodeInput);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          structuredContent: result
+        };
+      } catch (error) {
+        if (error instanceof ToolError) {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({ error: error.message, code: error.code, details: error.details }) }],
+            isError: true
+          };
+        }
+        throw error;
+      }
+    }
+  );
+
+  // read_events
+  server.registerTool(
+    "read_events",
+    {
+      title: "Read Events",
+      description: "Query and decode event logs from the blockchain. Supports event signature parsing and block range filtering. Limited to 10k block ranges.",
+      inputSchema: {
+        address: z.string().describe("Contract address to query events from"),
+        eventSignature: z.string().optional().describe("Event signature (e.g., 'Transfer(address,address,uint256)')"),
+        topics: z.array(z.string()).optional().describe("Indexed topics to filter (topic0 is event signature hash)"),
+        fromBlock: z.union([z.number(), z.literal("earliest")]).optional().describe("Starting block number"),
+        toBlock: z.union([z.number(), z.literal("latest")]).optional().describe("Ending block number"),
+        rpc: z.string().url().optional().describe("RPC URL (defaults to http://localhost:8545)")
+      }
+    },
+    async (args) => {
+      try {
+        const result = await readEvents(args as ReadEventsInput);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          structuredContent: result
+        };
+      } catch (error) {
+        if (error instanceof ToolError) {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({ error: error.message, code: error.code, details: error.details }) }],
+            isError: true
+          };
+        }
+        throw error;
+      }
+    }
+  );
+}

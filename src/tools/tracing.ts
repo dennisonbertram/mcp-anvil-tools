@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { createPublicClient, http } from "viem";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ToolError } from "../utils/errors.js";
 
 // ============================================================================
@@ -240,3 +241,86 @@ export const tracingTools = {
     handler: traceCall
   }
 };
+
+// ============================================================================
+// McpServer Tool Registration
+// ============================================================================
+
+/**
+ * Register all tracing tools with the McpServer
+ */
+export function registerTracingTools(server: McpServer) {
+  // trace_transaction
+  server.registerTool(
+    "trace_transaction",
+    {
+      title: "Trace Transaction",
+      description: "Trace an existing transaction by hash using debug_traceTransaction. Supports multiple tracer types: callTracer (call tree), prestateTracer (pre-execution state), 4byteTracer (function selectors), or raw opcode trace. Useful for debugging transaction execution and analyzing gas usage.",
+      inputSchema: {
+        txHash: z.string().describe("Transaction hash to trace"),
+        tracer: z.enum(["callTracer", "prestateTracer", "4byteTracer"]).optional().describe("Tracer type: callTracer (call tree), prestateTracer (pre-state), 4byteTracer (function selectors), or omit for raw opcode trace"),
+        tracerConfig: z.record(z.any()).optional().describe("Tracer-specific configuration (e.g., {onlyTopCall: true} for callTracer)"),
+        rpc: z.string().url().optional().describe("RPC URL (defaults to http://localhost:8545)")
+      }
+    },
+    async (args) => {
+      try {
+        const result = await traceTransaction(args as TraceTransactionInput);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          structuredContent: result
+        };
+      } catch (error) {
+        if (error instanceof ToolError) {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({ error: error.message, code: error.code, details: error.details }) }],
+            isError: true
+          };
+        }
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: (error as Error).message }) }],
+          isError: true
+        };
+      }
+    }
+  );
+
+  // trace_call
+  server.registerTool(
+    "trace_call",
+    {
+      title: "Trace Call",
+      description: "Trace a call without sending transaction using debug_traceCall. Similar to trace_transaction but simulates execution without broadcasting. Supports all tracer types and state inspection. Useful for debugging before sending actual transactions.",
+      inputSchema: {
+        to: z.string().describe("Target contract address"),
+        data: z.string().describe("Calldata (hex encoded)"),
+        from: z.string().optional().describe("Sender address"),
+        value: z.string().optional().describe("ETH value in wei (hex)"),
+        blockTag: z.union([z.string(), z.enum(["latest", "earliest", "pending", "safe", "finalized"])]).optional().describe("Block to trace at (default: latest)"),
+        tracer: z.enum(["callTracer", "prestateTracer", "4byteTracer"]).optional().describe("Tracer type: callTracer, prestateTracer, 4byteTracer, or omit for raw opcode trace"),
+        tracerConfig: z.record(z.any()).optional().describe("Tracer-specific configuration"),
+        rpc: z.string().url().optional().describe("RPC URL (defaults to http://localhost:8545)")
+      }
+    },
+    async (args) => {
+      try {
+        const result = await traceCall(args as TraceCallInput);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          structuredContent: result
+        };
+      } catch (error) {
+        if (error instanceof ToolError) {
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({ error: error.message, code: error.code, details: error.details }) }],
+            isError: true
+          };
+        }
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: (error as Error).message }) }],
+          isError: true
+        };
+      }
+    }
+  );
+}

@@ -11,23 +11,25 @@ import {
   http,
   decodeErrorResult,
   decodeFunctionResult,
-  type PublicClient,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { z } from 'zod';
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 // ============================================================================
 // Shared Client Factory with Connection Pooling
 // ============================================================================
 
-const clientCache = new Map<string, PublicClient>();
+type ViemPublicClient = ReturnType<typeof createPublicClient>;
 
-function getClient(rpcUrl: string, _chainId?: number): PublicClient {
+const clientCache = new Map<string, ViemPublicClient>();
+
+function getClient(rpcUrl: string, _chainId?: number): ViemPublicClient {
   const key = `${rpcUrl}:${_chainId || 'auto'}`;
   if (!clientCache.has(key)) {
     clientCache.set(key, createPublicClient({
       transport: http(rpcUrl),
-    }) as PublicClient);
+    }));
   }
   return clientCache.get(key)!;
 }
@@ -35,7 +37,7 @@ function getClient(rpcUrl: string, _chainId?: number): PublicClient {
 /**
  * Check if RPC is Anvil by attempting to call anvil_nodeInfo
  */
-async function checkIsAnvil(client: PublicClient): Promise<boolean> {
+async function checkIsAnvil(client: ViemPublicClient): Promise<boolean> {
   try {
     await client.request({ method: 'anvil_nodeInfo' as any, params: [] as any });
     return true;
@@ -752,3 +754,167 @@ export const executionTools = {
   createSnapshot,
   revertSnapshot,
 };
+
+// ============================================================================
+// McpServer Tool Registration
+// ============================================================================
+
+/**
+ * Register all execution tools with the McpServer
+ */
+export function registerExecutionTools(server: McpServer) {
+  // simulate_tx
+  server.registerTool(
+    "simulate_tx",
+    {
+      title: "Simulate Transaction",
+      description: "Simulate transaction execution without sending. Supports state overrides, gas limits, and return value decoding. Use for testing before actual execution.",
+      inputSchema: {
+        to: z.string().describe("Target contract address"),
+        data: z.string().describe("Calldata (hex encoded)"),
+        from: z.string().optional().describe("Sender address (defaults to first unlocked Anvil account)"),
+        gasLimit: z.string().optional().describe("Gas limit (hex or decimal string) to prevent infinite loops"),
+        abi: z.array(z.any()).optional().describe("Contract ABI for decoding return data"),
+        functionName: z.string().optional().describe("Function name for decoding (requires abi)"),
+        value: z.string().optional().describe("ETH value in wei (hex)"),
+        blockNumber: z.union([z.string(), z.enum(["latest", "earliest", "pending", "safe", "finalized"])]).optional().describe("Block number to simulate at"),
+        stateOverrides: z.record(z.any()).optional().describe("State overrides by address"),
+        rpc: z.string().url().optional().describe("RPC endpoint (defaults to local Anvil)")
+      }
+    },
+    async (args) => {
+      try {
+        const result = await simulateTx(args as SimulateTxInput);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          structuredContent: result
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: (error as Error).message }) }],
+          isError: true
+        };
+      }
+    }
+  );
+
+  // send_tx
+  server.registerTool(
+    "send_tx",
+    {
+      title: "Send Transaction",
+      description: "Send actual transaction to the network. Supports contract deployment, ETH transfers, and function calls. Returns receipt with gas used, logs, and contract address (if deployment).",
+      inputSchema: {
+        to: z.string().optional().describe("Target address (omit for contract deployment)"),
+        data: z.string().describe("Transaction data / contract bytecode"),
+        from: z.string().optional().describe("Sender address (defaults to Anvil account 0)"),
+        value: z.string().optional().describe("ETH value in wei (hex or decimal string)"),
+        gasLimit: z.string().optional().describe("Gas limit (hex or decimal string, auto-estimated if not provided)"),
+        gasPrice: z.string().optional().describe("Legacy gas price in wei (hex or decimal string)"),
+        maxFeePerGas: z.string().optional().describe("EIP-1559 max fee per gas (hex or decimal string)"),
+        maxPriorityFeePerGas: z.string().optional().describe("EIP-1559 priority fee per gas (hex or decimal string)"),
+        nonce: z.string().optional().describe("Transaction nonce (hex or decimal string, auto-determined if not provided)"),
+        privateKey: z.string().optional().describe("Private key for signing (uses Anvil unlocked accounts if not provided)"),
+        confirmations: z.number().optional().describe("Number of confirmations to wait for"),
+        rpc: z.string().url().optional().describe("RPC endpoint")
+      }
+    },
+    async (args) => {
+      try {
+        const result = await sendTx(args as SendTxInput);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          structuredContent: result
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: (error as Error).message }) }],
+          isError: true
+        };
+      }
+    }
+  );
+
+  // impersonate
+  server.registerTool(
+    "impersonate",
+    {
+      title: "Impersonate Account",
+      description: "Impersonate any address on Anvil for testing. Allows sending transactions from any address without private key. Anvil only - will fail on other networks.",
+      inputSchema: {
+        address: z.string().describe("Address to impersonate"),
+        stopImpersonating: z.boolean().optional().describe("Stop impersonating this address"),
+        rpc: z.string().url().optional().describe("RPC endpoint (must be Anvil)")
+      }
+    },
+    async (args) => {
+      try {
+        const result = await impersonate(args as ImpersonateInput);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          structuredContent: result
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: (error as Error).message }) }],
+          isError: true
+        };
+      }
+    }
+  );
+
+  // create_snapshot
+  server.registerTool(
+    "create_snapshot",
+    {
+      title: "Create Snapshot",
+      description: "Create state snapshot on Anvil for reverting later. Captures current block state including balances, storage, and contracts. Snapshots are lost on node restart.",
+      inputSchema: {
+        name: z.string().optional().describe("Human-readable snapshot identifier"),
+        description: z.string().optional().describe("Description of snapshot state"),
+        rpc: z.string().url().optional().describe("RPC endpoint (must be Anvil)")
+      }
+    },
+    async (args) => {
+      try {
+        const result = await createSnapshot(args as CreateSnapshotInput);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          structuredContent: result
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: (error as Error).message }) }],
+          isError: true
+        };
+      }
+    }
+  );
+
+  // revert_snapshot
+  server.registerTool(
+    "revert_snapshot",
+    {
+      title: "Revert Snapshot",
+      description: "Revert Anvil state to a previously created snapshot. Useful for resetting test state. Note: Snapshot IDs are typically single-use and invalidated after revert.",
+      inputSchema: {
+        snapshotId: z.string().describe("Snapshot ID or name to revert to"),
+        rpc: z.string().url().optional().describe("RPC endpoint (must be Anvil)")
+      }
+    },
+    async (args) => {
+      try {
+        const result = await revertSnapshot(args as RevertSnapshotInput);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+          structuredContent: result
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: (error as Error).message }) }],
+          isError: true
+        };
+      }
+    }
+  );
+}
