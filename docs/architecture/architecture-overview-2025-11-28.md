@@ -22,22 +22,23 @@ MCP Anvil Tools is a Model Context Protocol (MCP) server providing Ethereum deve
               ┌────────────────┼────────────────┐
               │                │                │
        ┌──────▼──────┐  ┌──────▼──────┐  ┌─────▼─────┐
-       │   HTTP/SSE  │  │    stdio    │  │  Claude   │
+       │  HTTP /mcp  │  │    stdio    │  │  Claude   │
        │  Transport  │  │  Transport  │  │  Desktop  │
+       │ (stateless) │  │             │  │           │
        └──────┬──────┘  └──────┬──────┘  └─────┬─────┘
               │                │                │
               └────────────────┼────────────────┘
                                │
                     ┌──────────▼──────────┐
-                    │     MCP Server      │
-                    │   (Express + SDK)   │
+                    │    McpServer        │
+                    │  + registerTool()   │
                     └──────────┬──────────┘
                                │
          ┌─────────────────────┼─────────────────────┐
          │                     │                     │
   ┌──────▼──────┐       ┌──────▼──────┐      ┌──────▼──────┐
   │   Reading   │       │  Execution  │      │   Tracing   │
-  │    Tools    │       │    Tools    │      │    Tools    │
+  │  Tools (4)  │       │  Tools (5)  │      │  Tools (2)  │
   └──────┬──────┘       └──────┬──────┘      └──────┬──────┘
          │                     │                     │
          └─────────────────────┼─────────────────────┘
@@ -57,20 +58,20 @@ MCP Anvil Tools is a Model Context Protocol (MCP) server providing Ethereum deve
 
 ## Transport Modes
 
-### HTTP/SSE Mode (`npm start`)
+### HTTP Mode (`npm start`)
 
 For web clients and multi-agent systems:
 
 - **Express server** handles HTTP requests
-- **Server-Sent Events** for MCP protocol streaming
-- **Session management** via query parameter `sessionId`
-- **Endpoints**: `/sse`, `/messages`, `/health`, `/metrics`
+- **StreamableHTTPServerTransport** for stateless MCP protocol
+- **No session management** - stateless mode
+- **Endpoints**: `/mcp` (MCP protocol), `/health`, `/metrics`
 
 **Use cases:**
 - Web-based AI clients
 - Multi-agent architectures
 - RESTful integrations
-- Persistent connections
+- Stateless connections
 
 ### stdio Mode (`npm run start:stdio`)
 
@@ -94,11 +95,11 @@ For CLI tools and Claude Desktop:
 Detects transport mode via `--stdio` flag:
 
 ```typescript
-const args = process.argv.slice(2);
-if (args.includes('--stdio')) {
+const useStdio = process.argv.includes('--stdio');
+if (useStdio) {
   // stdio transport
 } else {
-  // HTTP/SSE transport
+  // HTTP transport
 }
 ```
 
@@ -108,18 +109,19 @@ Express application with MCP SDK integration:
 
 - **Health endpoint**: `GET /health` - Server status
 - **Metrics endpoint**: `GET /metrics` - Statistics
-- **SSE endpoint**: `GET /sse` - MCP transport
-- **Messages endpoint**: `POST /messages` - MCP requests
+- **MCP endpoint**: `POST /mcp` - Stateless MCP protocol via StreamableHTTPServerTransport
 
 ### Tools Organization
 
 ```
 src/tools/
-├── index.ts       # Tool registration with MCP SDK
-├── reading.ts     # read_source, read_storage, read_bytecode, read_events
-├── execution.ts   # simulate_tx, send_tx, impersonate, snapshots
-└── tracing.ts     # trace_transaction, trace_call
+├── index.ts       # Tool registration with McpServer.registerTool()
+├── reading.ts     # read_source, read_storage, read_bytecode, read_events (4 tools)
+├── execution.ts   # simulate_tx, send_tx, impersonate, snapshots (5 tools)
+└── tracing.ts     # trace_transaction, trace_call (2 tools)
 ```
+
+**Total: 11 tools registered**
 
 ### Tool Categories
 
@@ -151,10 +153,10 @@ src/tools/
 ### Request Flow
 
 ```
-1. Client connects (HTTP/SSE or stdio)
-2. MCP initialize handshake
+1. Client connects (HTTP /mcp or stdio)
+2. MCP initialize handshake (stateless)
 3. Client requests tools/list
-4. Server returns available tools
+4. Server returns 11 available tools
 5. Client calls tool with arguments
 6. Tool handler executes via viem
 7. Response returned to client
@@ -163,9 +165,9 @@ src/tools/
 ### Tool Execution Flow
 
 ```
-1. MCP SDK receives tools/call request
+1. McpServer receives tools/call request
 2. Request validated against Zod schema
-3. Tool handler invoked with validated args
+3. Registered tool handler invoked with validated args
 4. viem client makes RPC call to Ethereum
 5. Response formatted and returned
 6. Errors wrapped in ToolError class
@@ -186,7 +188,7 @@ Schema tables:
 
 - Snapshot registry for quick lookups
 - viem client pool for connection reuse
-- Session tracking for HTTP/SSE mode
+- Stateless transport (no session tracking)
 
 ## Key Patterns
 

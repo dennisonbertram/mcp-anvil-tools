@@ -61,19 +61,19 @@ ETHERSCAN_API_KEY=your_etherscan_api_key
 
 ## Running the Server
 
-### HTTP/SSE Mode (for web clients)
+### HTTP Mode (for web clients)
 
 ```bash
 npm start
 ```
 
-Server runs at `http://localhost:3000`
+Server runs at `http://localhost:3000` with MCP endpoint at `/mcp`
 
 **Verify it's working:**
 
 ```bash
 curl http://localhost:3000/health
-# Returns: {"status":"ok"}
+# Returns: {"status":"ok","version":"1.0.0","timestamp":"..."}
 ```
 
 ### stdio Mode (for Claude Desktop)
@@ -98,13 +98,21 @@ npm run dev
 curl http://localhost:3000/health
 ```
 
-### 2. Connect via SSE
+### 2. Test MCP Endpoint
 
 ```bash
-curl -N http://localhost:3000/sse
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list",
+    "params": {}
+  }'
 ```
 
-You should see an endpoint event with a sessionId.
+You should see a list of 11 available tools.
 
 ### 3. Start Anvil (Optional)
 

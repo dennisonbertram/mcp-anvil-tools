@@ -15,10 +15,10 @@ Perfect for AI-powered smart contract auditing, testing workflows, and blockchai
 
 ## Key Features
 
-- **Dual Transport Modes**: HTTP/SSE for web clients or stdio for CLI/desktop integration
-- **Reading Tools**: Source code, storage, bytecode, and event log access
-- **Execution Tools**: Transaction simulation, sending, and state manipulation
-- **Tracing Tools**: Transaction and call tracing with multiple tracer types
+- **Dual Transport Modes**: Stateless HTTP via `/mcp` endpoint or stdio for CLI/desktop integration
+- **Reading Tools (4)**: Source code, storage, bytecode, and event log access
+- **Execution Tools (5)**: Transaction simulation, sending, and state manipulation
+- **Tracing Tools (2)**: Transaction and call tracing with multiple tracer types
 - **Anvil Integration**: Automatic Anvil process management with snapshot/revert support
 - **State Persistence**: SQLite-backed deployment and session tracking
 - **Type Safety**: Full TypeScript support with Zod validation
@@ -75,19 +75,18 @@ npm run dev
 
 ## Transport Modes
 
-### HTTP/SSE Mode
+### HTTP Mode
 
-Use HTTP/SSE for:
+Use HTTP mode for:
 - Web-based AI clients
 - Multi-agent architectures
-- Persistent connections with state management
+- Stateless MCP connections
 - RESTful API interactions
 
 **Endpoints:**
 - `GET /health` - Health check (unauthenticated)
 - `GET /metrics` - Deployment and instance statistics
-- `GET /sse` - Server-Sent Events MCP transport
-- `POST /messages` - MCP message handling
+- `POST /mcp` - MCP protocol endpoint (StreamableHTTPServerTransport)
 
 **Example Connection:**
 ```bash
@@ -97,8 +96,23 @@ curl http://localhost:3000/health
 # Metrics
 curl http://localhost:3000/metrics
 
-# SSE connection (requires MCP client)
-curl -N http://localhost:3000/sse
+# MCP protocol request
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {},
+      "clientInfo": {
+        "name": "test-client",
+        "version": "1.0.0"
+      }
+    }
+  }'
 ```
 
 ### stdio Mode
@@ -498,7 +512,7 @@ New networks are supported automatically as Alchemy adds them - no code changes 
 ```
 src/
 ├── index.ts              # Entry point (HTTP/stdio mode detection)
-├── server.ts             # Express and MCP server setup
+├── server.ts             # Express app + McpServer setup
 ├── config.ts             # Configuration management
 ├── anvil/
 │   ├── manager.ts        # Anvil process lifecycle
@@ -506,10 +520,10 @@ src/
 ├── state/
 │   └── manager.ts        # SQLite state management
 ├── tools/
-│   ├── index.ts          # Tool registration
-│   ├── reading.ts        # Reading tools (source, storage, bytecode, events)
-│   ├── execution.ts      # Execution tools (simulate, send, impersonate, snapshots)
-│   └── tracing.ts        # Tracing tools (debug_traceTransaction, debug_traceCall)
+│   ├── index.ts          # Tool registration with McpServer.registerTool()
+│   ├── reading.ts        # Reading tools (4): source, storage, bytecode, events
+│   ├── execution.ts      # Execution tools (5): simulate, send, impersonate, snapshots
+│   └── tracing.ts        # Tracing tools (2): trace_transaction, trace_call
 └── utils/
     ├── errors.ts         # Error handling
     └── validation.ts     # Zod schemas
@@ -534,17 +548,19 @@ SQLite tables for state persistence:
          │
     ┌────┴────┐
     │  HTTP   │  stdio
-    │  /SSE   │  (stdin/stdout)
+    │  /mcp   │  (stdin/stdout)
     └────┬────┘
          │
-    ┌────┴────────┐
-    │  MCP Server │
-    └────┬────────┘
+    ┌────┴──────────────────┐
+    │  McpServer (stateless)│
+    │  + registerTool API   │
+    └────┬──────────────────┘
          │
     ┌────┴────────┐
-    │   Tools     │
-    │  (reading + │
-    │  execution) │
+    │   11 Tools  │
+    │  Reading: 4 │
+    │ Execution: 5│
+    │  Tracing: 2 │
     └────┬────────┘
          │
     ┌────┴────────┐

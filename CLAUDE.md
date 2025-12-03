@@ -30,7 +30,7 @@ npm run format         # Prettier
 ## Architecture
 
 ### Transport Modes
-- **HTTP/SSE** (`npm start`): Express server with SSE for web clients, endpoints at `/sse`, `/health`, `/metrics`
+- **HTTP** (`npm start`): Express server with StreamableHTTPServerTransport, stateless MCP endpoint at `/mcp`, plus `/health` and `/metrics`
 - **stdio** (`npm run start:stdio`): JSON-RPC over stdin/stdout for Claude Desktop integration
 
 ### Core Components
@@ -46,9 +46,10 @@ src/
 ├── state/
 │   └── manager.ts    # SQLite state persistence (better-sqlite3)
 ├── tools/
-│   ├── index.ts      # Tool registration with MCP
-│   ├── reading.ts    # read_source, read_storage, read_bytecode, read_events
-│   └── execution.ts  # simulate_tx, send_tx, impersonate, snapshots
+│   ├── index.ts      # Tool registration with McpServer.registerTool()
+│   ├── reading.ts    # read_source, read_storage, read_bytecode, read_events (4 tools)
+│   ├── execution.ts  # simulate_tx, send_tx, impersonate, snapshots (5 tools)
+│   └── tracing.ts    # trace_transaction, trace_call (2 tools)
 └── utils/
     ├── errors.ts     # Custom error classes
     └── validation.ts # Zod schemas for tool inputs
@@ -56,7 +57,8 @@ src/
 
 ### Key Patterns
 - **Singleton pattern**: `getConfig()`, `getStateManager()` for shared instances
-- **MCP SDK**: Uses `@modelcontextprotocol/sdk` Server class with `setRequestHandler`
+- **MCP SDK**: Uses `@modelcontextprotocol/sdk` McpServer class with `registerTool()` high-level API
+- **Stateless transport**: StreamableHTTPServerTransport with no session management
 - **Viem**: All blockchain interactions via viem (`createPublicClient`, `http` transport)
 - **Zod validation**: All config and tool inputs validated with Zod schemas
 
@@ -69,8 +71,11 @@ src/
 
 ## Tool Categories
 
-**Reading Tools**: `read_source`, `read_storage`, `read_bytecode`, `read_events`
-**Execution Tools**: `simulate_tx`, `send_tx`, `impersonate`, `create_snapshot`, `revert_snapshot`
+**Reading Tools (4)**: `read_source`, `read_storage`, `read_bytecode`, `read_events`
+**Execution Tools (5)**: `simulate_tx`, `send_tx`, `impersonate`, `create_snapshot`, `revert_snapshot`
+**Tracing Tools (2)**: `trace_transaction`, `trace_call`
+
+**Total: 11 tools**
 
 Tools requiring Anvil: `impersonate`, `create_snapshot`, `revert_snapshot`
 
